@@ -1,0 +1,142 @@
+; ====================================================================
+; PROYECTO MICROPROCESADORES - LECTURA Y CONTEO DE CARACTERES
+; ====================================================================
+
+        ORG 0000h           ; El código inicia en la dirección 0000h (Memoria EEPROM)
+        
+INICIO:
+        LD SP, FFFFh        ; Inicializamos el Stack Pointer al final de la memoria RAM
+        LD C, 0             ; Usace el registro C como nuestro CONTADOR DE LETRAS. Inicia en 0.
+
+        ; 1. Tarea A: Solicitar nombre y apellidos
+        LD HL, MSG_PEDIR    ; Apuntamos HL a la dirección del mensaje inicial
+        CALL PRINT_STRING   ; Llamamos a la subrutina para imprimir el texto
+
+        ; 2. Bucle principal: Leer teclado (Tareas B, C y D)
+LEER_TECLA:
+        CALL READ_CHAR      ; Leer un carácter del teclado y guardarlo en el registro A
+        
+        ; Comprobar si es "Enter" (código ASCII 0Dh) para terminar
+        CP 0Dh
+        JR Z, FIN_CAPTURA   
+
+        ; Comprobar si es "Espacio" (código ASCII 20h)
+        CP 20h
+        JR Z, ES_ESPACIO    ; Si es espacio, saltamos para NO contarlo
+
+        ; Validar si es una letra (Mayúsculas A-Z o Minúsculas a-z)
+        CALL VALIDAR_LETRA  ; Subrutina que evalúa el ASCII
+        CP 0                ; Si la subrutina devuelve 0 en A, es inválido
+        JR Z, ES_ERROR
+
+        ; Si llegamos aquí, ES UNA LETRA VÁLIDA
+        INC C               ; Incrementamos el contador de letras (Registro C)
+        CALL PRINT_CHAR     ; Imprimimos la letra en pantalla
+        JR LEER_TECLA       ; Regresamos a leer la siguiente tecla
+
+ES_ESPACIO:
+        CALL PRINT_CHAR     ; Imprimimos el espacio
+        JR LEER_TECLA       ; Regresamos a leer, pero NO incrementamos el contador C
+
+ES_ERROR:
+        ; Tarea C: Mostrar mensaje de error
+        LD HL, MSG_ERROR
+        CALL PRINT_STRING
+        JR LEER_TECLA       ; Volvemos a esperar otra tecla
+
+FIN_CAPTURA:
+        ; Tarea E: Mostrar texto final y cantidad de letras
+        LD HL, MSG_FINAL
+        CALL PRINT_STRING
+
+        ; Convertir el número en C a decimal e imprimirlo
+        LD A, C
+        CALL IMPRIMIR_NUMERO ; Subrutina para mostrar el contador
+        
+        HALT                ; Terminar ejecución
+
+; ====================================================================
+; ZONA DE SUBRUTINAS LOGICAS
+; ====================================================================
+
+VALIDAR_LETRA:
+        ; Recibe el carácter en A. Devuelve A=1 si es válido, A=0 si es inválido.
+        LD B, A             ; Guarda el valor original de A temporalmente
+        CP 41h              ; ¿Es menor que 'A'?
+        JR C, NO_ES_LETRA
+        CP 7Bh              ; ¿Es mayor que 'z'?
+        JR NC, NO_ES_LETRA
+        CP 5Bh              ; ¿Está en el hueco entre 'Z' y 'a'?
+        JR C, SI_ES_LETRA   ; Es menor o igual a 'Z'
+        CP 61h
+        JR C, NO_ES_LETRA   ; Es mayor a 'Z' y menor a 'a' (Inválido)
+SI_ES_LETRA:
+        LD A, 1             ; Código de éxito
+        RET
+NO_ES_LETRA:
+        LD A, 0             ; Código de error
+        RET
+
+; ====================================================================
+; ZONA DE SUBRUTINAS DEPENDIENTES DEL SIMULADOR Z80_WORKBENCH
+; ====================================================================
+
+PRINT_CHAR:
+        OUT (01h), A        ; Puerto 01h transmite datos de la terminal
+        RET
+
+READ_CHAR:
+WAIT_KEY:
+        IN A, (02h)         ; Puerto 02h comprueba estado de la terminal
+        CP 00h              ; ¿Hay una tecla presionada?
+        JR Z, WAIT_KEY      ; Si es 00h, esperar hasta recibir un carácter
+        IN A, (01h)         ; Leer el carácter hacia A desde el puerto de datos
+        RET
+
+PRINT_STRING:
+        LD A, (HL)          ; Cargar el siguiente carácter
+        CP 0                ; ¿Es el terminador nulo?
+        RET Z               ; Si es cero, terminar
+        CALL PRINT_CHAR     ; Si no, imprimir el carácter
+        INC HL              ; Avanzar al siguiente
+        JR PRINT_STRING     ; Repetir el bucle
+
+IMPRIMIR_NUMERO:
+        ; Convierte un valor Hex de 8 bits en A a Decimal y lo imprime
+        LD B, 0             ; Centenas
+        LD C, 0             ; Decenas
+C100:   CP 100
+        JR C, C10
+        SUB 100
+        INC B
+        JR C100
+C10:    CP 10
+        JR C, C1
+        SUB 10
+        INC C
+        JR C10
+C1:     LD D, A             ; Unidades
+        LD A, B
+        OR A
+        JR Z, SKIP_100
+        ADD A, '0'
+        CALL PRINT_CHAR
+SKIP_100:
+        LD A, C
+        OR B
+        JR Z, SKIP_10
+        LD A, C
+        ADD A, '0'
+        CALL PRINT_CHAR
+SKIP_10:
+        LD A, D
+        ADD A, '0'
+        CALL PRINT_CHAR
+        RET
+
+; ====================================================================
+; ZONA DE MENSAJES (Datos almacenados en la ROM)
+; ====================================================================
+MSG_PEDIR:  DEFB "Ingrese su nombre y apellidos: ", 0
+MSG_ERROR:  DEFB 13, 10, "Error: tecleo un caracter diferente a letras o espacio.", 13, 10, 0
+MSG_FINAL:  DEFB 13, 10, "Cantidad de letras: ", 0
